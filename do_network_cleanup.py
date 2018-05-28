@@ -1,38 +1,33 @@
 #!/usr/bin/env python
 import re, json, os
-from func_tools import Args, Composable, composable , Id, fmap, Log
+from func_tools import Args, Composable, composable , Id, fmap, Log, call
 
 link_re = r"\d+:\s+(?P<dev>\S+)\:\s+<\S+>\s+mtu\s+(?P<mtu>\d+)\.*"
 rule_re = r"^\d+\:\s+(?P<rule>.*)\s+lookup\s+(?P<table_id>\w+)"
 route_re = r"^((local|broadcast)\s+)?(?P<dst>\S+)\s+(via\s+(?P<gw>\S+)\s+)?dev\s+(?P<dev_name>\S+)(\s+table\s+(?P<table_id>\S+))?(\s+proto\s+(?P<proto>\S+))?(\s+scope\s+(?P<scope>\S+))?(\s+src\s+(?P<src>\S+))?(\s+metric\s+(?P<metric>\d+))?.*"
 ip_addr_re = r"\d+:\s+(?P<dev>\S+)\s+inet(6)?\s+(?P<ip_addr_cidr>(?P<ip_addr>\S+)\/(?P<prefix>\d+))(\s+brd\s+\S+)?\s+scope\s+(?P<scope>\S+).*"
 
-def ddd(cmd):
-    print('dddd'+cmd)
-    return os.popen(cmd).readlines()
+cli_run_fnc         = composable(lambda cmd: os.popen(cmd).readlines())
+ip_cli              = cli_run_fnc << 'ip -o {}'.format
+ip_cli_v6           = ip_cli << '-6 {}'.format
+show_links          = ip_cli << 'link show'
+show_slaves_of_link = ip_cli << 'link show master {}'.format
+show_links_by_type  = ip_cli << 'link show type {}'.format
+show_bonds          = show_links_by_type << "bond"
+show_vlans          = show_links_by_type << "vlan"
+show_bonds          = show_links_by_type << "macvlan"
+show_bonds          = show_links_by_type << "ipvlan"
+show_ip_addrs       = ip_cli << 'all'
+show_ip_routes      = ip_cli << 'route show table all'
+show_ip_rules_v4    = ip_cli << 'rule show'
+show_ip_rules_v6    = ip_cli_v6 << 'rule show'
 
-cli_run_fnc = Composable(lambda cmd: os.popen(cmd).readlines())
-#cli_run_fnc = Composable(ddd)
-show_links      = cli_run_fnc << 'ip -o l'
-#show_bonds      = cli_run_fnc << ('ip -o l show type bond')
-#show_vlans      = cli_run_fnc << ('ip -o l show type vlan')
-#show_macvlans    = cli_run_fnc << ('ip -o l show type macvlan')
-#show_ipvlans     = cli_run_fnc << ('ip -o l show type ipvlan')
-#show_ip_addrs    = cli_run_fnc << ('ip -o a')
-#show_ip_routes   = cli_run_fnc << ('ip -o ro sh ta all')
-#show_ip_rules_v4 = cli_run_fnc << ('ip ru sh')
-#show_ip_rules_v6 = cli_run_fnc << ('ip -6 ru sh')
-re_search_args = Args(Id, Id, 0)
-link_search_args = Args(link_re, Id, 0)
+re_search           = re.search << Args(Id, Id, 0)
+parse_link_line     = ((link_re, Id) >> re_search).groupdict >> call()['dev']
+show_slaves         = fmap << (show_slaves_of_link << parse_link_line, Id) << show_links
+print(show_links())
 
-show_slaves_of_port = cli_run_fnc << 'ip -o l show master {}'.format
-
-parse_link_line = (re.search << link_search_args).groupdict
-#
-#show_slaves      = fmap << (show_slaves_of_port << log << parse_link_line, Id) << show_links
-#print(show_links())
-
-#print(show_slaves())
+print(show_slaves())
 '''
 parse         = lambda _re, lines: [m.groupdict() for m in (re.search(_re, line, 0) for line in lines) if m]
 parse_links   = lambda li: parse(link_re, li)
